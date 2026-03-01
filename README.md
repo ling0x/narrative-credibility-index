@@ -12,6 +12,8 @@ A Rust CLI tool that scans written documents and scores them against the **NCI E
 
 ## Scoring Rubric
 
+📋 **[View the complete NCI Scoring System (PDF)](./Narrative-Credibility-Index.pdf)**
+
 | Score Range | Interpretation |
 |-------------|----------------|
 | 0 – 25      | Low likelihood of a PSYOP |
