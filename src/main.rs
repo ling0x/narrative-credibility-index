@@ -34,6 +34,9 @@ enum Commands {
         /// API key (falls back to OPENAI_API_KEY env var)
         #[arg(long, env = "OPENAI_API_KEY")]
         api_key: Option<String>,
+        /// Enable verbose debug output showing AI thought process
+        #[arg(short, long)]
+        verbose: bool,
     },
     /// Start a REST API server to scrape URLs and scan them
     Serve {
@@ -64,7 +67,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Scan { file, api_url, model, api_key } => {
+        Commands::Scan { file, api_url, model, api_key, verbose } => {
             let is_default_openai = api_url.contains("api.openai.com");
             let key = api_key
                 .or_else(|| std::env::var("OPENAI_API_KEY").ok())
@@ -80,7 +83,7 @@ async fn main() -> Result<()> {
             let content = std::fs::read_to_string(&file)?;
             println!("\n🔍 Scanning: {}\n", file.display());
 
-            let scores = ai_agent::score_document(&content, &api_url, &model, &key).await?;
+            let scores = ai_agent::score_document(&content, &api_url, &model, &key, verbose).await?;
             score::print_report(&scores);
         }
         Commands::Serve { port, api_url, model, api_key } => {
