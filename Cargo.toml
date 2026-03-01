@@ -19,3 +19,6 @@ reqwest = { version = "0.12", features = ["blocking", "json"] }
 tokio = { version = "1.43", features = ["full"] }
 anyhow = "1.0"
 colored = "2.1"
+axum = "0.7"
+html2md = "0.2"
+uuid = { version = "1.11", features = ["v4"] }

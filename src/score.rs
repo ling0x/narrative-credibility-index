@@ -1,7 +1,8 @@
 use colored::*;
+use serde::{Deserialize, Serialize};
 use crate::rubric::CATEGORIES;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CategoryScore {
     pub id: u8,
     pub name: String,

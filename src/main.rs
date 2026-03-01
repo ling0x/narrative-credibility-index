@@ -2,6 +2,7 @@ mod rubric;
 mod score;
 mod ai_agent;
 mod tui;
+mod server;
 
 use clap::{Parser, Subcommand};
 use anyhow::Result;
@@ -34,6 +35,21 @@ enum Commands {
         #[arg(long, env = "OPENAI_API_KEY")]
         api_key: Option<String>,
     },
+    /// Start a REST API server to scrape URLs and scan them
+    Serve {
+        /// Port to listen on
+        #[arg(long, short, default_value = "3000")]
+        port: u16,
+        /// OpenAI-compatible API base URL
+        #[arg(long, env = "OPENAI_API_URL", default_value = "https://api.openai.com/v1")]
+        api_url: String,
+        /// Model name
+        #[arg(long, env = "OPENAI_MODEL", default_value = "gpt-4o")]
+        model: String,
+        /// API key (falls back to OPENAI_API_KEY env var)
+        #[arg(long, env = "OPENAI_API_KEY")]
+        api_key: Option<String>,
+    },
     /// Interactive TUI to manually score a document
     Manual {
         /// Optional path to the .md document (for context display)
@@ -49,11 +65,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Scan { file, api_url, model, api_key } => {
-            // If the URL is the default OpenAI one, we require a key. 
-            // If it's a custom one (like local Ollama), we default to a dummy key "sk-no-key" 
-            // to satisfy reqwest's bearer auth if it's called, though local servers usually ignore it.
             let is_default_openai = api_url.contains("api.openai.com");
-            
             let key = api_key
                 .or_else(|| std::env::var("OPENAI_API_KEY").ok())
                 .unwrap_or_else(|| {
@@ -70,6 +82,21 @@ async fn main() -> Result<()> {
 
             let scores = ai_agent::score_document(&content, &api_url, &model, &key).await?;
             score::print_report(&scores);
+        }
+        Commands::Serve { port, api_url, model, api_key } => {
+            let is_default_openai = api_url.contains("api.openai.com");
+            let key = api_key
+                .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+                .unwrap_or_else(|| {
+                    if is_default_openai {
+                        eprintln!("Error: OPENAI_API_KEY not set. Use --api-key or set the env var.");
+                        std::process::exit(1);
+                    } else {
+                        "sk-no-key".to_string()
+                    }
+                });
+
+            server::start(port, server::ServerState { api_url, model, api_key: key }).await?;
         }
         Commands::Manual { file } => {
             let preview = file

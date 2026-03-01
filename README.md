@@ -5,6 +5,7 @@ A Rust CLI tool that scans a Markdown document and scores it against the **NCI E
 ## Features
 
 - 📄 **Auto-scan** — point at any `.md` file and get an AI-reasoned NCI score
+- 🌐 **Web API** — launch a REST API to submit news URLs, automatically extract their content, save them locally, and scan them
 - 🤖 **AI Agent mode** — uses an OpenAI-compatible API to reason through all 20 categories
 - 🖥️ **Interactive TUI** — manually input scores for each category using a Ratatui-powered terminal UI
 - 📊 **Score report** — colour-coded result with interpretation band
@@ -30,26 +31,37 @@ cargo build --release
 
 ## Usage
 
-### AI Agent scan
+### 1. AI Agent scan (CLI)
 ```bash
-# Set your OpenAI-compatible API key
-export OPENAI_API_KEY="sk-..."
-
-# Scan a document
+# Scan a local document
 ./target/release/nci scan article.md
 
 # Use a custom base URL (e.g. Ollama, Together AI)
 ./target/release/nci scan article.md --api-url http://localhost:11434/v1 --model llama3
 ```
 
-### Manual TUI input
+### 2. REST API Server (Automated Web Scraping & Scoring)
+You can run an Axum-powered web server to submit live URLs:
+
 ```bash
-./target/release/nci manual article.md
-# Or without a file (blank slate)
-./target/release/nci manual
+# Start the server
+./target/release/nci serve --port 3000 --api-url http://localhost:11434/v1 --model llama3
 ```
 
-### View rubric
+In another terminal, send a POST request with the URL of the article you want to scan:
+```bash
+curl -X POST http://127.0.0.1:3000/scan \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://example.com/news/some-article"}'
+```
+*The server will fetch the webpage, convert the HTML to a clean Markdown file, save it into a `scans/` folder, analyse it with the AI, and return the complete NCI JSON breakdown.*
+
+### 3. Manual TUI input
+```bash
+./target/release/nci manual article.md
+```
+
+### 4. View rubric
 ```bash
 ./target/release/nci rubric
 ```
@@ -58,24 +70,6 @@ export OPENAI_API_KEY="sk-..."
 
 | Variable | Description | Default |
 |----------|-------------|----------|
-| `OPENAI_API_KEY` | API key | required for `scan` |
+| `OPENAI_API_KEY` | API key | required for standard OpenAI endpoints |
 | `OPENAI_API_URL` | Base URL | `https://api.openai.com/v1` |
 | `OPENAI_MODEL` | Model name | `gpt-4o` |
-
-## Example Output
-
-```
-══════════════════════════════════════════════════════════
-     NARRATIVE CREDIBILITY INDEX — SCORE REPORT
-══════════════════════════════════════════════════════════
-   1. Timing                          [4] ████░
-   2. Emotional Manipulation          [3] ███░░
-     ... (20 categories)
-══════════════════════════════════════════════════════════
-  TOTAL SCORE: 62 / 100
-  ⚠  Strong likelihood — manipulation likely
-══════════════════════════════════════════════════════════
-```
-
----
-*Based on NCI Engineered Reality Scoring System — Applied Behavior Research © 2024*
