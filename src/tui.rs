@@ -1,34 +1,20 @@
 use anyhow::Result;
-use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::{
-    backend::CrosstermBackend,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    layout::{Alignment, Constraint, Layout, Rect},
+    style::{Color, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Gauge, List, ListItem, ListState, Paragraph, Wrap},
-    Frame, Terminal,
+    widgets::{Block, Gauge, List, ListItem, ListState, Paragraph, Wrap},
+    DefaultTerminal, Frame,
 };
-use std::io;
 use crate::rubric::CATEGORIES;
 use crate::score::CategoryScore;
 
 pub fn run_manual_tui(document_preview: &str) -> Result<Vec<CategoryScore>> {
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
+    // Ratatui 0.28+ provides a clean setup/teardown utility
+    let mut terminal = ratatui::init();
     let result = run_app(&mut terminal, document_preview);
-
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
-
+    ratatui::restore();
     result
 }
 
@@ -49,7 +35,7 @@ impl AppState {
 }
 
 fn run_app(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    terminal: &mut DefaultTerminal,
     doc_preview: &str,
 ) -> Result<Vec<CategoryScore>> {
     let mut state = AppState::new(doc_preview);
@@ -97,9 +83,8 @@ fn run_app(
 }
 
 fn render(f: &mut Frame, state: &AppState, list_state: &mut ListState) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+    // Ratatui 0.27+ layout macros
+    let chunks = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(f.area());
 
     render_left(f, state, list_state, chunks[0]);
@@ -107,7 +92,6 @@ fn render(f: &mut Frame, state: &AppState, list_state: &mut ListState) {
 }
 
 fn render_left(f: &mut Frame, state: &AppState, list_state: &mut ListState, area: Rect) {
-    // Reserve bottom 3 rows for gauge
     let inner_area = Rect { height: area.height.saturating_sub(3), ..area };
     let gauge_area = Rect {
         y: area.y + area.height.saturating_sub(3),
@@ -122,12 +106,17 @@ fn render_left(f: &mut Frame, state: &AppState, list_state: &mut ListState, area
             let score = state.scores[i];
             let bar = "█".repeat(score as usize) + &"░".repeat(5 - score as usize);
             let selected = i == state.selected;
+            
+            // Ratatui 0.28+ fluent styles
             let base_style = if selected {
-                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+                Style::new().black().on_cyan().bold()
             } else {
-                Style::default().fg(Color::White)
+                Style::new().white()
             };
-            let score_style = Style::default().fg(score_color(score)).bg(if selected { Color::Cyan } else { Color::Reset });
+            
+            let score_style = Style::new().fg(score_color(score));
+            let score_style = if selected { score_style.bg(Color::Cyan) } else { score_style };
+
             ListItem::new(Line::from(vec![
                 Span::styled(format!(" {:>2}. {:<24}", cat.id, cat.name), base_style),
                 Span::styled(format!(" [{}] {}", score, bar), score_style),
@@ -137,24 +126,22 @@ fn render_left(f: &mut Frame, state: &AppState, list_state: &mut ListState, area
 
     let total: u32 = state.scores.iter().map(|&s| s as u32).sum();
 
+    // Ratatui 0.28+ Block::bordered() builder
     f.render_stateful_widget(
         List::new(items)
-            .block(Block::default()
+            .block(Block::bordered()
                 .title(format!(" NCI Manual Scoring  [Total: {}/100] ", total))
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan))
+                .border_style(Style::new().cyan())
             )
-            .highlight_style(
-                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
-            ),
+            .highlight_style(Style::new().black().on_cyan().bold()),
         inner_area,
         list_state,
     );
 
     f.render_widget(
         Gauge::default()
-            .block(Block::default().borders(Borders::ALL))
-            .gauge_style(Style::default().fg(gauge_color(total)))
+            .block(Block::bordered())
+            .gauge_style(Style::new().fg(gauge_color(total)))
             .ratio((total as f64 / 100.0).min(1.0))
             .label(format!("{}/100 — {}", total, interpret(total))),
         gauge_area,
@@ -162,53 +149,47 @@ fn render_left(f: &mut Frame, state: &AppState, list_state: &mut ListState, area
 }
 
 fn render_right(f: &mut Frame, state: &AppState, area: Rect) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
+    let chunks = Layout::vertical([Constraint::Percentage(55), Constraint::Percentage(45)])
         .split(area);
 
-    // Category detail
     let cat = &CATEGORIES[state.selected];
     f.render_widget(
         Paragraph::new(format!(
             "Category {}  —  {}\n\nQuestion:\n{}\n\nExample:\n{}",
             cat.id, cat.name, cat.question, cat.example
         ))
-        .block(Block::default()
+        .block(Block::bordered()
             .title(" Category Detail ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow))
+            .border_style(Style::new().yellow())
         )
         .wrap(Wrap { trim: true })
         .alignment(Alignment::Left),
         chunks[0],
     );
 
-    // Document preview
     let preview = if state.doc_preview.is_empty() {
         "(No document loaded — use: nci manual <file.md>)".to_string()
     } else {
         state.doc_preview.clone()
     };
+    
     f.render_widget(
         Paragraph::new(preview)
-            .block(Block::default()
+            .block(Block::bordered()
                 .title(" Document Preview ")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Green))
+                .border_style(Style::new().green())
             )
             .wrap(Wrap { trim: true }),
         chunks[1],
     );
 
-    // Keybindings strip at bottom of right panel
     let hint_area = Rect {
         x: area.x, y: area.y + area.height.saturating_sub(1),
         width: area.width, height: 1,
     };
     f.render_widget(
         Paragraph::new("  ↑↓/jk Navigate  1-5 Set score  +/- Adjust  Enter/q Done")
-            .style(Style::default().fg(Color::DarkGray)),
+            .style(Style::new().dark_gray()),
         hint_area,
     );
 }
