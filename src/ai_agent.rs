@@ -81,12 +81,14 @@ fn call_llm_blocking(
 
     println!("  → Calling {} at {}…", model, url);
 
-    let resp = client
-        .post(&url)
-        .bearer_auth(api_key)
-        .json(&body)
-        .send()
-        .context("HTTP request failed")?;
+    // If an API key is provided (or fallback "sk-no-key" is used for custom URLs),
+    // we attach it. Local Ollama servers safely ignore unexpected Authorization headers.
+    let mut request = client.post(&url).json(&body);
+    if !api_key.is_empty() {
+        request = request.bearer_auth(api_key);
+    }
+
+    let resp = request.send().context("HTTP request failed")?;
 
     if !resp.status().is_success() {
         let status = resp.status();

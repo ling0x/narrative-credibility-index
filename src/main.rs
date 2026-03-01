@@ -49,11 +49,20 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Scan { file, api_url, model, api_key } => {
+            // If the URL is the default OpenAI one, we require a key. 
+            // If it's a custom one (like local Ollama), we default to a dummy key "sk-no-key" 
+            // to satisfy reqwest's bearer auth if it's called, though local servers usually ignore it.
+            let is_default_openai = api_url.contains("api.openai.com");
+            
             let key = api_key
                 .or_else(|| std::env::var("OPENAI_API_KEY").ok())
                 .unwrap_or_else(|| {
-                    eprintln!("Error: OPENAI_API_KEY not set. Use --api-key or set the env var.");
-                    std::process::exit(1);
+                    if is_default_openai {
+                        eprintln!("Error: OPENAI_API_KEY not set. Use --api-key or set the env var.");
+                        std::process::exit(1);
+                    } else {
+                        "sk-no-key".to_string()
+                    }
                 });
 
             let content = std::fs::read_to_string(&file)?;
